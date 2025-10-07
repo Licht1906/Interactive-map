@@ -26,7 +26,8 @@ def build_graph(edges):
             "neighbor": v,
             "length": length,
             "time": {mode: length / speed for mode, speed in modes_speed.items()},
-            "allowed": set(modes_speed.keys())
+            "allowed": set(modes_speed.keys()),
+            "traffic": "free"   # mặc định là đường thông thoáng
         })
     return graph
 

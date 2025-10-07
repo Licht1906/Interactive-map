@@ -1,6 +1,6 @@
-let map = L.map('map').setView([21.021, 105.830], 16); // Hà Nội center
+let map = L.map("map").setView([21.0227, 105.8195], 16);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
 }).addTo(map);
 
@@ -43,10 +43,40 @@ document.getElementById("routeBtn").addEventListener("click", function () {
     })
     .then(response => response.json())
     .then(data => {
-        if (data.path && data.path.length > 0) {
-            let latlngs = data.path.map(p => [p[0], p[1]]);
-            routeLine = L.polyline(latlngs, {color: 'blue'}).addTo(map);
-            map.fitBounds(routeLine.getBounds());
+        if (data.success) {
+            // Xoá route cũ
+            if (routeLine) {
+                routeLine.forEach(l => map.removeLayer(l));
+            }
+            routeLine = [];
+
+            // Vẽ từng cạnh theo traffic
+            data.edges.forEach(edge => {
+                let color = "green";
+                if (edge.traffic === "medium") color = "yellow";
+                else if (edge.traffic === "heavy") color = "orange";
+                else if (edge.traffic === "blocked") color = "red";
+
+                let poly = L.polyline(edge.coords, {color: color, weight: 6}).addTo(map);
+                routeLine.push(poly);
+
+                if (edge.traffic === "blocked") {
+                    let midLat = (edge.coords[0][0] + edge.coords[1][0]) / 2;
+                    let midLng = (edge.coords[0][1] + edge.coords[1][1]) / 2;
+                    let banIcon = L.divIcon({
+                        className: "ban-icon",
+                        html: "🚫",
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+                    let marker = L.marker([midLat, midLng], {icon: banIcon}).addTo(map);
+                    routeLine.push(marker);
+                }
+            });
+
+            // Hiển thị thông tin
+            document.getElementById("info").innerText =
+                `Thời gian dự kiến: ${data.time_minutes} phút - Quãng đường: ${data.distance_km} km`;
         } else {
             alert("Không tìm được đường đi!");
         }
@@ -54,13 +84,21 @@ document.getElementById("routeBtn").addEventListener("click", function () {
 });
 
 document.getElementById("clearBtn").addEventListener("click", function () {
-    // Xóa marker
+    // Xoá marker
     markers.forEach(m => map.removeLayer(m));
     markers = [];
 
-    // Xóa đường
+    // Xoá đường đi (nếu là array nhiều đoạn)
     if (routeLine) {
-        map.removeLayer(routeLine);
-        routeLine = null;
+        if (Array.isArray(routeLine)) {
+            routeLine.forEach(l => map.removeLayer(l));
+        } else {
+            map.removeLayer(routeLine);
+        }
+        routeLine = [];
     }
+
+    // Xoá thông tin hiển thị
+    document.getElementById("info").innerText = "";
 });
+

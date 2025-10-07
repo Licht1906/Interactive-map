@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin - Quản lý giao thông</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; }
+    #map { height: 90vh; width: 100%; }
+    .panel {
+      padding: 10px;
+      background: #f4f4f4;
+      border-bottom: 1px solid #ccc;
+    }
+    select, button {
+      margin-left: 5px;
+      padding: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h3>Admin Panel - Quản lý tình trạng giao thông</h3>
+    <p>Click chọn điểm A và B trên bản đồ để chọn tuyến cần thay đổi trạng thái.</p>
+    <label for="status">Trạng thái:</label>
+    <select id="status">
+      <option value="free">🟩 Thoáng</option>
+      <option value="medium">🟨 Hơi đông</option>
+      <option value="heavy">🟧 Tắc</option>
+      <option value="blocked">🟥 Cấm</option>
+    </select>
+    <button id="applyBtn">Áp dụng</button>
+    <button id="clearBtn">Xóa điểm</button>
+    <button id="resetBtn">Đặt lại</button>
+    <p id="result"></p>
+  </div>
+
+  <div id="map"></div>
+
+  <script>
+    let map = L.map("map").setView([21.0227, 105.8195], 16);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+    }).addTo(map);
+
+    let markers = [];
+    let allEdges = []; // lưu toàn bộ polyline edges để quản lý
+
+    // Hàm chọn màu theo trạng thái
+    function getColor(status) {
+      if (status === "medium") return "yellow";
+      if (status === "heavy") return "orange";
+      if (status === "blocked") return "red";
+      return "green"; // free
+    }
+
+    // Hàm vẽ toàn bộ edges
+    function drawAllEdges(edges) {
+      // Xóa edges cũ
+      allEdges.forEach(l => map.removeLayer(l));
+      allEdges = [];
+
+      edges.forEach(edge => {
+        let poly = L.polyline(edge.coords, {
+          color: getColor(edge.status),
+          weight: 5
+        }).addTo(map);
+        allEdges.push(poly);
+
+        if (edge.status === "blocked") {
+          let midLat = (edge.coords[0][0] + edge.coords[1][0]) / 2;
+          let midLng = (edge.coords[0][1] + edge.coords[1][1]) / 2;
+          let banIcon = L.divIcon({
+            className: "ban-icon",
+            html: "🚫",
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+          });
+          let marker = L.marker([midLat, midLng], {icon: banIcon}).addTo(map);
+          allEdges.push(marker);
+        }
+      });
+    }
+
+    // Load edges ban đầu khi mở trang
+    fetch("/edges")
+      .then(r => r.json())
+      .then(data => {
+        drawAllEdges(data.edges);
+      });
+
+    // click chọn điểm
+    map.on("click", function(e) {
+      if (markers.length >= 2) return;
+      let marker = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map);
+      markers.push(marker);
+    });
+
+    // Nút Áp dụng
+    document.getElementById("applyBtn").addEventListener("click", function () {
+      if (markers.length < 2) {
+        alert("Hãy chọn 2 điểm A và B trên bản đồ trước!");
+        return;
+      }
+
+      let start = markers[0].getLatLng();
+      let goal = markers[1].getLatLng();
+      let status = document.getElementById("status").value;
+
+      fetch("/admin/set_path_status", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          start: [start.lat, start.lng],
+          goal: [goal.lat, goal.lng],
+          status: status
+        })
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById("result").innerText = data.message;
+        if (data.success) {
+          // Sau khi cập nhật xong thì reload lại toàn bộ edges để đổi màu
+          fetch("/edges")
+            .then(r => r.json())
+            .then(all => {
+              drawAllEdges(all.edges);
+            });
+        }
+      });
+    });
+
+    // Nút Đặt lại
+    document.getElementById("resetBtn").addEventListener("click", function () {
+      fetch("/admin/reset", { method: "POST" })
+      .then(r => r.json())
+      .then(data => {
+          alert(data.message);
+
+          markers.forEach(m => map.removeLayer(m));
+          markers = [];
+          document.getElementById("result").innerText = "";
+
+          // Sau đó reload edges để vẽ lại bản đồ ở trạng thái free
+          fetch("/edges")
+            .then(r => r.json())
+            .then(all => {
+                drawAllEdges(all.edges);
+            });
+      });
+    });
+
+    // Nút Xóa điểm
+    document.getElementById("clearBtn").addEventListener("click", function () {
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+      document.getElementById("result").innerText = "";
+    });
+</script>
+</body>
+</html>
