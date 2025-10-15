@@ -1,7 +1,9 @@
 from flask import Flask, request, jsonify, render_template
 import osmnx as ox
-from graph_utils import load_data, build_graph
+from graph_utils import load_data, build_graph, add_restricted_zone, add_flood_zone, clear_zones
+import graph_utils as gu
 from a_star import a_star
+from shapely.geometry import Point, Polygon
 
 app = Flask(__name__)
 
@@ -13,6 +15,7 @@ nodes_raw, edges_raw = load_data()
 nodes = {str(k): (float(v[0]), float(v[1])) for k, v in nodes_raw.items()}
 
 normalized_edges = []
+
 for e in edges_raw:
     if isinstance(e, dict):
         if "u" in e and "v" in e and "length" in e:
@@ -186,6 +189,31 @@ def set_path_status():
         "message": f"Đã cập nhật {status} cho {len(updated_edges)} cạnh trong tuyến đường",
         "updated_edges": updated_edges
     })
+
+
+
+@app.route("/admin/add_zone", methods=["POST"])
+def add_zone():
+    data = request.get_json()
+    zone_type = data.get("zone_type")
+    coords = data.get("coords")
+
+    if not coords:
+        return jsonify({"success": False, "message": "Thiếu tọa độ vùng"})
+
+    if zone_type == "forbidden":
+        add_restricted_zone(coords)
+        return jsonify({"success": True, "message": "Đã thêm vùng cấm"})
+    elif zone_type == "flood":
+        add_flood_zone(coords)
+        return jsonify({"success": True, "message": "Đã thêm vùng ngập lụt"})
+    else:
+        return jsonify({"success": False, "message": "Loại vùng không hợp lệ"})
+
+@app.route("/admin/reset_zones", methods=["POST"])
+def reset_zones():
+    clear_zones()
+    return jsonify({"success": True, "message": "Đã xóa toàn bộ vùng cấm/ngập"})
 
 # =======================
 if __name__ == "__main__":

@@ -5,6 +5,9 @@
   <title>Admin - Quản lý giao thông</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw/dist/leaflet.draw.css" />
+  <script src="https://unpkg.com/leaflet-draw/dist/leaflet.draw.js"></script>
+  <script src="https://unpkg.com/leaflet.pattern/dist/leaflet.pattern.min.js"></script>
   <style>
     body { margin: 0; font-family: Arial, sans-serif; }
     #map { height: 90vh; width: 100%; }
@@ -33,6 +36,13 @@
     <button id="applyBtn">Áp dụng</button>
     <button id="clearBtn">Xóa điểm</button>
     <button id="resetBtn">Đặt lại</button>
+    <div id="map" style="height: 600px;"></div>
+    <select id="zoneType">
+      <option value="forbidden">🚫 Vùng cấm</option>
+      <option value="flood">🌊 Vùng ngập</option>
+    </select>
+    <button id="saveZoneBtn">Lưu vùng</button>
+    <button id="resetZonesBtn">Đặt lại vùng</button>
     <p id="result"></p>
   </div>
 
@@ -41,11 +51,12 @@
   <script>
     let map = L.map("map").setView([21.0227, 105.8195], 16);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
+      maxZoom: 21,
     }).addTo(map);
 
     let markers = [];
-    let allEdges = []; // lưu toàn bộ polyline edges để quản lý
+    let allEdges = [];
+    let allZones = [];
 
     // Hàm chọn màu theo trạng thái
     function getColor(status) {
@@ -157,6 +168,73 @@
       markers = [];
       document.getElementById("result").innerText = "";
     });
+
+    // Công cụ vẽ vùng
+    let drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+    let drawControl = new L.Control.Draw({
+      edit: { featureGroup: drawnItems },
+      draw: { polygon: true, rectangle: false, circle: false, polyline: false, marker: false, circlemarker: false }
+    });
+    map.addControl(drawControl);
+
+    let lastPolygon = null;
+
+    map.on(L.Draw.Event.CREATED, function (e) {
+      lastPolygon = e.layer;
+      drawnItems.addLayer(lastPolygon);
+    });
+
+    // Hàm vẽ vùng cấm / vùng ngập
+    function drawZone(coords, type) {
+      let color = type === "forbidden" ? "red" : "blue";
+      let polygon = L.polygon(coords, {
+        color: color,
+        weight: 2,
+        dashArray: "6,8",
+        fillColor: color,
+        fillOpacity: 0.25
+      }).addTo(map);
+      allZones.push({ zone_type: type, polygon, coords });
+    }
+
+    // Lưu vùng
+    document.getElementById("saveZoneBtn").addEventListener("click", function () {
+      if (!lastPolygon) return alert("Hãy vẽ một vùng trước!");
+      let zoneType = document.getElementById("zoneType").value;
+      let coords = lastPolygon.getLatLngs()[0].map(p => [p.lat, p.lng]);
+      fetch("/admin/add_zone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zone_type: zoneType, coords })
+      })
+        .then(r => r.json())
+        .then(d => {
+          alert(d.message);
+          drawZone(coords, zoneType);
+          lastPolygon = null;
+          drawnItems.clearLayers();
+        });
+    });
+
+    // Đặt lại vùng
+    document.getElementById("resetZonesBtn").addEventListener("click", function () {
+      fetch("/admin/reset_zones", { method: "POST" })
+        .then(r => r.json())
+        .then(d => {
+          alert(d.message);
+          allZones.forEach(z => map.removeLayer(z.polygon));
+          allZones = [];
+          drawnItems.clearLayers();
+        });
+    });
+
+    // Load vùng khi mở trang
+    fetch("/admin/zones")
+      .then(r => r.json())
+      .then(data => {
+        data.forEach(zone => drawZone(zone.coords, zone.zone_type));
+      });
 </script>
 </body>
 </html>

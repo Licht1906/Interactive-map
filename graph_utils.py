@@ -1,6 +1,7 @@
 import json
 import copy
 import osmnx as ox
+from shapely.geometry import Point, Polygon
 
 modes_speed = {
     "walk": 1.4,
@@ -8,6 +9,9 @@ modes_speed = {
     "motorcycle": 8.3,
     "car": 11.1
 }
+
+restricted_zones = []
+flood_zones = []
 
 def load_data(nodes_file="nodes.json", edges_file="edges.json"):
     with open(nodes_file, "r", encoding="utf-8") as f:
@@ -52,11 +56,38 @@ def traffic_jam(graph, u, v, factor=5):
             for m in e["time"]:
                 e["time"][m] *= factor
 
-def flood_area(graph, flooded_nodes):
-    for u in flooded_nodes:
-        graph.pop(u, None)
-    for u in list(graph.keys()):
-        graph[u] = [e for e in graph[u] if e["neighbor"] not in flooded_nodes]
+def add_restricted_zone(coords):
+    try:
+        poly = Polygon([(lon, lat) for lat, lon in coords])  # shapely dùng (x=lon, y=lat)
+        restricted_zones.append(poly)
+        return True
+    except Exception as e:
+        print("Lỗi khi thêm vùng cấm:", e)
+        return False
+    
+def add_flood_zone(coords):
+    try:
+        poly = Polygon([(lon, lat) for lat, lon in coords])
+        flood_zones.append(poly)
+        return True
+    except Exception as e:
+        print("Lỗi khi thêm vùng ngập:", e)
+        return False
+    
+def is_in_restricted_zone(lat, lon):
+    try:
+        p = Point(lon, lat)
+        return any(p.within(zone) for zone in restricted_zones)
+    except Exception:
+        return False
+
+
+def is_in_flood_zone(lat, lon):
+    try:
+        p = Point(lon, lat)
+        return any(p.within(zone) for zone in flood_zones)
+    except Exception:
+        return False
 
 def unblock_edge(graph, u, v, mode, length=None):
     for e in graph.get(u, []):
@@ -86,3 +117,7 @@ def reset_graph(original_edges):
 
 def clone_graph(graph):
     return copy.deepcopy(graph)
+
+def clear_zones():
+    restricted_zones.clear()
+    flood_zones.clear()

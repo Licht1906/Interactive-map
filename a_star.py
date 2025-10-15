@@ -1,7 +1,7 @@
 import math
 import heapq
 from math import inf
-from graph_utils import modes_speed
+from graph_utils import modes_speed, is_in_flood_zone, is_in_restricted_zone
 
 # Tính khoảng cách đường chim bay
 def haversine(lat1, lon1, lat2, lon2):
@@ -43,6 +43,17 @@ def a_star(graph, nodes, start, goal, mode):
             if edge.get("traffic") == "blocked":
                 continue
 
+            lat1, lon1 = nodes[current]
+            lat2, lon2 = nodes[neighbor]
+            mid_lat, mid_lon = (lat1 + lat2) / 2, (lon1 + lon2) / 2
+
+            if is_in_restricted_zone(mid_lat, mid_lon):
+                continue
+
+            cost_time = edge["time"][mode]
+            if is_in_flood_zone(mid_lat, mid_lon):
+                cost_time *= 4.0
+
             # Điều chỉnh chi phí theo tình trạng giao thông
             traffic = edge.get("traffic", "free")
             traffic_factor = 1.0
@@ -51,7 +62,7 @@ def a_star(graph, nodes, start, goal, mode):
             elif traffic == "heavy":
                 traffic_factor = 1.6   # đi chậm hơn 60%
 
-            cost_time = edge["time"][mode] * traffic_factor
+            cost_time *= traffic_factor
             cost_dist = edge["length"]
             tentative_g = g_score[current] + cost_time
             tentative_dist = dist_score[current] + cost_dist
